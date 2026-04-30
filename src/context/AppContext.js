@@ -1,176 +1,133 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import { supabase } from '../lib/supabase';
 import { SESSIONS } from '../data/sessions';
 
 const AppContext = createContext(null);
 
-export function getStorageUsers() {
-  try {
-    return JSON.parse(localStorage.getItem('sel_users') || '{}');
-  } catch {
-    return {};
-  }
-}
-export function saveStorageUsers(users) {
-  localStorage.setItem('sel_users', JSON.stringify(users));
+function profileToStudentEntry(profile) {
+  return {
+    name: profile.name,
+    emoji: profile.emoji || '🧒',
+    points: profile.points || 0,
+    completed: profile.completed || [],
+    history: profile.history || [],
+    inventory: profile.inventory || [],
+    homeItems: profile.home_items || [],
+    chars: profile.chars || {},
+    email: profile.email || '',
+  };
 }
 
 export function AppProvider({ children }) {
   const [currentPage, setCurrentPage] = useState('landing');
-  const [currentUser, setCurrentUser] = useState(null); // { id, name, email }
-  const [currentUserRole, setCurrentUserRole] = useState(null); // 'teacher' | 'student'
+  const [currentUser, setCurrentUser] = useState(null);
+  const [currentUserRole, setCurrentUserRole] = useState(null);
   const [studentData, setStudentData] = useState({});
   const [sessionLocks, setSessionLocks] = useState(SESSIONS.map((s) => s.locked));
   const [pointHistory, setPointHistory] = useState([]);
   const [toast, setToast] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
 
-  // 토스트 표시
   const showToast = useCallback((msg) => {
     setToast(msg);
     setToastVisible(true);
     setTimeout(() => setToastVisible(false), 2800);
   }, []);
 
-  // 페이지 전환
   const showPage = useCallback((pageId) => {
     setCurrentPage(pageId);
   }, []);
 
-  // 초기 로그인 상태 복원
-  // sel_session 형식: "이메일:역할" (예: "teacher@a.com:teacher")
-  useEffect(() => {
-    const session = localStorage.getItem('sel_session');
-    if (!session) return;
-    const users = getStorageUsers();
-    const data = users[session];
+  const loadStudentDataForTeacher = useCallback(async () => {
+    const { data } = await supabase
+      .from('profiles')
+      .select('*')
+      .eq('role', 'student')
+      .eq('status', 'approved');
     if (!data) return;
-
-    const email = session.split(':').slice(0, -1).join(':'); // 마지막 :role 제거
-    const user = { id: session, name: data.name, email };
-
-    if (data.role === 'teacher') {
-      const studentUpdates = {};
-      Object.entries(users).forEach(([key, u]) => {
-        if (u.role === 'student' && u.status === 'approved') {
-          studentUpdates[key] = {
-            name: u.name,
-            emoji: u.emoji || '🧒',
-            points: u.points || 0,
-            completed: u.completed || [],
-            history: u.history || [],
-            inventory: u.inventory || [],
-            homeItems: u.homeItems || [],
-            chars: u.chars || {},
-          };
-        }
-      });
-      setStudentData(studentUpdates);
-      setCurrentUser(user);
-      setCurrentUserRole('teacher');
-      setCurrentPage('teacher');
-    } else if (data.role === 'student' && data.status === 'approved') {
-      setStudentData({
-        [session]: {
-          name: data.name,
-          emoji: data.emoji || '🧒',
-          points: data.points || 0,
-          completed: data.completed || [],
-          history: data.history || [],
-          inventory: data.inventory || [],
-          homeItems: data.homeItems || [],
-          chars: data.chars || {},
-        },
-      });
-      setCurrentUser(user);
-      setCurrentUserRole('student');
-      setCurrentPage('student');
-    }
+    const updates = {};
+    data.forEach((s) => { updates[s.id] = profileToStudentEntry(s); });
+    setStudentData(updates);
   }, []);
 
-  // 로그인 (Landing에서 호출)
-  // uid 형식: "이메일:역할" (예: "student@a.com:student")
-  const loginUser = useCallback(
-    (email, userData, role) => {
-      const uid = `${email}:${role}`;
-      localStorage.setItem('sel_session', uid);
-      const user = { id: uid, name: userData.name, email };
+  const loginUser = useCallback(async (authUser, profile) => {
+    const user = { id: authUser.id, name: profile.name, email: authUser.email };
+    setCurrentUser(user);
+    setCurrentUserRole(profile.role);
+
+    if (profile.role === 'teacher') {
+      await loadStudentDataForTeacher();
+      setCurrentPage('teacher');
+      showToast(`${profile.name} 선생님, 환영합니다! 👩‍🏫`);
+    } else {
+      setStudentData({ [authUser.id]: profileToStudentEntry(profile) });
+      setCurrentPage('student');
+      showToast(`${profile.name} 학생, 환영합니다! 🌟`);
+    }
+  }, [loadStudentDataForTeacher, showToast]);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(async ({ data: { session } }) => {
+      if (!session) return;
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', session.user.id)
+        .single();
+      if (!profile || profile.status === 'pending' || profile.status === 'rejected') return;
+
+      const user = { id: session.user.id, name: profile.name, email: session.user.email };
       setCurrentUser(user);
-      setCurrentUserRole(role);
+      setCurrentUserRole(profile.role);
 
-      if (role === 'teacher') {
-        const users = getStorageUsers();
-        const studentUpdates = {};
-        Object.entries(users).forEach(([key, u]) => {
-          if (u.role === 'student' && u.status === 'approved') {
-            studentUpdates[key] = {
-              name: u.name,
-              emoji: u.emoji || '🧒',
-              points: u.points || 0,
-              completed: u.completed || [],
-              history: u.history || [],
-              inventory: u.inventory || [],
-              homeItems: u.homeItems || [],
-              chars: u.chars || {},
-            };
-          }
-        });
-        setStudentData(studentUpdates);
+      if (profile.role === 'teacher') {
+        await loadStudentDataForTeacher();
         setCurrentPage('teacher');
-        showToast(`${userData.name} 선생님, 환영합니다! 👩‍🏫`);
       } else {
-        setStudentData({
-          [uid]: {
-            name: userData.name,
-            emoji: userData.emoji || '🧒',
-            points: userData.points || 0,
-            completed: userData.completed || [],
-            history: userData.history || [],
-            inventory: userData.inventory || [],
-            homeItems: userData.homeItems || [],
-            chars: userData.chars || {},
-          },
-        });
+        setStudentData({ [session.user.id]: profileToStudentEntry(profile) });
         setCurrentPage('student');
-        showToast(`${userData.name} 학생, 환영합니다! 🌟`);
       }
-    },
-    [showToast]
-  );
+    });
 
-  // 로그아웃 (TopNav에서 호출)
-  const logoutUser = useCallback(() => {
-    localStorage.removeItem('sel_session');
-    setCurrentUser(null);
-    setCurrentUserRole(null);
-    setStudentData({});
-    setCurrentPage('landing');
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event) => {
+      if (event === 'SIGNED_OUT') {
+        setCurrentUser(null);
+        setCurrentUserRole(null);
+        setStudentData({});
+        setCurrentPage('landing');
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [loadStudentDataForTeacher]);
+
+  const logoutUser = useCallback(async () => {
+    await supabase.auth.signOut();
     showToast('로그아웃 되었습니다 👋');
   }, [showToast]);
 
-  // 학생 데이터 업데이트 — localStorage에도 자동 반영
   const updateStudentData = useCallback((uid, updater) => {
     setStudentData((prev) => {
       const existing = prev[uid] || {
-        name: '',
-        emoji: '🧒',
-        points: 0,
-        completed: [],
-        history: [],
-        inventory: [],
-        homeItems: [],
-        chars: {},
+        name: '', emoji: '🧒', points: 0, completed: [], history: [],
+        inventory: [], homeItems: [], chars: {},
       };
       const updated = updater(existing);
-      const users = getStorageUsers();
-      if (users[uid]) {
-        users[uid] = { ...users[uid], ...updated };
-        saveStorageUsers(users);
-      }
+
+      supabase.from('profiles').update({
+        points: updated.points,
+        completed: updated.completed,
+        history: updated.history,
+        inventory: updated.inventory,
+        home_items: updated.homeItems,
+        chars: updated.chars,
+        emoji: updated.emoji,
+      }).eq('id', uid);
+
       return { ...prev, [uid]: updated };
     });
   }, []);
 
-  // 레벨 계산
   const getLevel = useCallback((pts) => {
     if (pts >= 2000) return { label: '🏆 챔피언', tier: 5 };
     if (pts >= 1200) return { label: '💎 다이아몬드', tier: 4 };
@@ -197,39 +154,24 @@ export function AppProvider({ children }) {
       const student = prev[uid] || {};
       return {
         ...prev,
-        [uid]: {
-          ...student,
-          chars: {
-            ...(student.chars || {}),
-            [who]: charData,
-          },
-        },
+        [uid]: { ...student, chars: { ...(student.chars || {}), [who]: charData } },
       };
     });
   }, []);
 
   const value = {
-    currentPage,
-    showPage,
-    currentUser,
-    setCurrentUser,
-    currentUserRole,
-    setCurrentUserRole,
-    studentData,
-    setStudentData,
+    currentPage, showPage,
+    currentUser, setCurrentUser,
+    currentUserRole, setCurrentUserRole,
+    studentData, setStudentData,
     updateStudentData,
-    sessionLocks,
-    setSessionLocks,
-    pointHistory,
-    setPointHistory,
-    toast,
-    toastVisible,
-    showToast,
-    getLevel,
-    getNextLevel,
+    sessionLocks, setSessionLocks,
+    pointHistory, setPointHistory,
+    toast, toastVisible, showToast,
+    getLevel, getNextLevel,
     setChar,
-    loginUser,
-    logoutUser,
+    loginUser, logoutUser,
+    loadStudentDataForTeacher,
   };
 
   return <AppContext.Provider value={value}>{children}</AppContext.Provider>;

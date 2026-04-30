@@ -4,6 +4,7 @@
   "description": "뉴스포츠와 사회정서학습 연계 학습 플랫폼",
   "private": true,
   "dependencies": {
+    "@supabase/supabase-js": "^2.105.1",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "react-scripts": "5.0.1"
