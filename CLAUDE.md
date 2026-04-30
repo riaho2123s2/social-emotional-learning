@@ -239,3 +239,4 @@ package.json        # 프로젝트 의존성 및 npm 스크립트
 
 - **커밋 메시지는 영어로**: `feat: Add login page`, `fix: Points not saving`
 - **파일명**: camelCase (컴포넌트는 PascalCase)
+- **커밋과 푸시는 명시적으로 요청받았을 때만 실행한다.** 코드 수정 후 자동으로 커밋하거나 푸시하지 않는다.
