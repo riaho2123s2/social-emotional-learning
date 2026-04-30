@@ -130,15 +130,29 @@ Workflow는 일회용이 아니야. 더 나은 방법을 발견하거나, 숨겨
 ## 파일 구조
 
 ```
-src/                # React 소스 코드
-  context/          # 상태 관리 (AuthContext — 로그인, 포인트, 인벤토리)
-  pages/            # 페이지 (Login, Dashboard, Games, Shop, MyRoom)
+src/
+  context/          # 전역 상태 관리
+    AppContext.js   # 로그인·로그아웃·포인트·학생 데이터 — Supabase 연동
+  lib/
+    supabase.js     # Supabase 클라이언트 초기화 (환경변수로 연결)
+  pages/            # 화면 단위 컴포넌트
+    Landing.js      # 역할 선택 · 로그인 · 회원가입
+    StudentDashboard.js
+    TeacherDashboard.js
+    Shop.js
+    HomeDecor.js
+    CharDress.js
+  components/       # 공통 UI 컴포넌트
+    TopNav.js
+    PtsModal.js     # 교사가 포인트 지급하는 모달
+    MissionModal.js # 학생이 미션 완료하는 모달
+    Toast.js
+  data/             # 정적 데이터 (코드로 바꿀 필요 없음)
+    sessions.js     # 20차시 목록 및 미션 내용
+    shopItems.js    # 상점 아이템 목록
   styles/           # CSS
-  mockDB.js         # 게임/상점 데이터 + localStorage 저장소 (백엔드 대체)
-  scripts/          # 유틸리티 스크립트 (node src/scripts/seedData.js 로 실행)
-  data/             # 원본 JSON 데이터 파일 (참고용 보관)
 public/             # 정적 파일 (index.html)
-.env                # 비밀. API 키와 인증 정보. 민감 데이터는 오직 여기만.
+.env                # 비밀. Supabase URL과 API 키. 민감 데이터는 오직 여기만.
 package.json        # 프로젝트 의존성 및 npm 스크립트
 ```
 
@@ -170,31 +184,56 @@ package.json        # 프로젝트 의존성 및 npm 스크립트
 
 ### 기술 스택
 
-| 계층        | 도구                                               |
-| ----------- | -------------------------------------------------- |
-| 프론트엔드  | React 18                                           |
-| 데이터 저장 | localStorage (브라우저 내장, 서버·Firebase 불필요) |
-| 호스팅      | Vercel (무료)                                      |
-| 상태 관리   | Context API                                        |
+| 계층        | 도구                                        |
+| ----------- | ------------------------------------------- |
+| 프론트엔드  | React 18                                    |
+| 인증        | Supabase Auth (이메일/비밀번호)             |
+| 데이터 저장 | Supabase Database (PostgreSQL)              |
+| 호스팅      | Vercel (무료)                               |
+| 상태 관리   | Context API (`src/context/AppContext.js`)   |
+
+### Supabase 설정
+
+- **프로젝트 URL**: `https://ykjdtlwojecseuhggbiw.supabase.co`
+- **API 키**: `.env` 파일에 보관 (`REACT_APP_SUPABASE_URL`, `REACT_APP_SUPABASE_ANON_KEY`)
+- **Vercel 환경변수**: Vercel 대시보드 → Settings → Environment Variables 에도 동일하게 등록되어 있음
+- **연결 파일**: `src/lib/supabase.js`
+
+### Supabase DB 테이블: `profiles`
+
+| 컬럼         | 타입    | 설명                                        |
+| ------------ | ------- | ------------------------------------------- |
+| `id`         | uuid    | Supabase Auth 사용자 ID (primary key)       |
+| `name`       | text    | 이름                                        |
+| `email`      | text    | 이메일                                      |
+| `role`       | text    | `'teacher'` 또는 `'student'`               |
+| `status`     | text    | `'pending'` / `'approved'` / `'rejected'`  |
+| `student_num`| int     | 학생 번호 (학생만)                          |
+| `emoji`      | text    | 프로필 이모지                               |
+| `points`     | int     | 보유 포인트                                 |
+| `completed`  | jsonb   | 완료한 차시 번호 배열                       |
+| `history`    | jsonb   | 포인트 획득/사용 내역                       |
+| `inventory`  | jsonb   | 보유 아이템 목록                            |
+| `home_items` | jsonb   | 마음의 집 배치 아이템                       |
+| `chars`      | jsonb   | 캐릭터 꾸미기 데이터                        |
+
+> ⚠️ 앱 코드에서는 `home_items` → `homeItems`로 변환해서 사용함 (`profileToStudentEntry()` 함수)
 
 ### 핵심 기능 구현 위치
 
-| 기능                  | 파일                                               |
-| --------------------- | -------------------------------------------------- |
-| 로그인/회원가입       | `src/pages/Login.js`, `src/context/AuthContext.js` |
-| 20차시 게임 목록      | `src/pages/Games.js`                               |
-| 포인트 시스템         | `src/context/AuthContext.js` → `updateUserData()`  |
-| 아이템 상점           | `src/pages/Shop.js`                                |
-| 마음의 집 꾸미기      | `src/pages/MyRoom.js`                              |
-| 게임/상점 원본 데이터 | `src/mockDB.js`                                    |
-
-### 데이터 구조 (localStorage)
-
-```
-sel_session   → 현재 로그인한 이메일
-sel_users     → { [이메일]: { username, email, password,
-                              points, inventory, roomLayout, completedGames } }
-```
+| 기능                  | 파일                                                        |
+| --------------------- | ----------------------------------------------------------- |
+| 로그인/회원가입       | `src/pages/Landing.js`                                      |
+| 전역 상태 및 Auth     | `src/context/AppContext.js`                                 |
+| Supabase 연결         | `src/lib/supabase.js`                                       |
+| 20차시 게임 목록      | `src/pages/StudentDashboard.js`                             |
+| 포인트 시스템         | `src/context/AppContext.js` → `updateStudentData()`         |
+| 아이템 상점           | `src/pages/Shop.js`                                         |
+| 마음의 집 꾸미기      | `src/pages/HomeDecor.js`                                    |
+| 캐릭터 꾸미기         | `src/pages/CharDress.js`                                    |
+| 교사 대시보드         | `src/pages/TeacherDashboard.js`                             |
+| 차시/미션 데이터      | `src/data/sessions.js`                                      |
+| 상점 아이템 데이터    | `src/data/shopItems.js`                                     |
 
 ### Git 규칙
 
