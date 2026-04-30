@@ -1399,28 +1399,93 @@ body::before {
 }
 
 /* ======= 반응형 ======= */
+
+/* 태블릿 (768px 이하) */
 @media (max-width: 768px) {
-  .dashboard-grid {
-    grid-template-columns: 1fr;
+  /* 랜딩 */
+  .landing-logo { font-size: 1.9rem; }
+  .character { width: 54px; height: 54px; font-size: 1.6rem; }
+
+  /* 네비게이션: 메뉴를 두 번째 줄로 내림 */
+  .top-nav {
+    flex-wrap: wrap;
+    gap: 6px;
+    padding: 10px 16px;
   }
-  .teacher-grid {
-    grid-template-columns: 1fr;
+  .nav-menu {
+    order: 3;
+    width: 100%;
+    justify-content: center;
+    overflow-x: auto;
+    padding-bottom: 2px;
   }
-  .session-grid {
-    grid-template-columns: repeat(3, 1fr);
-  }
-  .landing-logo {
-    font-size: 1.9rem;
+
+  /* 레이아웃 */
+  .dashboard-grid { grid-template-columns: 1fr; }
+  .teacher-grid { grid-template-columns: 1fr; }
+  .session-grid { grid-template-columns: repeat(3, 1fr); }
+  .app-container { padding: 12px; }
+  .card { padding: 18px; }
+
+  /* 마음의 집 */
+  .home-scene { height: 300px; }
+}
+
+/* 모바일 (480px 이하) */
+@media (max-width: 480px) {
+  /* 랜딩 */
+  .landing-logo { font-size: 1.45rem; }
+  .landing-sub { font-size: 0.82rem; padding: 5px 12px; }
+  .character-row { gap: 8px; margin-bottom: 18px; }
+  .character { width: 44px; height: 44px; font-size: 1.3rem; }
+  .role-pick-row { gap: 12px; }
+  .role-card { width: 140px; padding: 20px 12px; }
+  .role-card-icon { font-size: 2.4rem; }
+  .login-box { padding: 24px 18px; border-radius: 22px; }
+
+  /* 네비게이션 */
+  .nav-logo { font-size: 0.95rem; }
+  .nav-item { padding: 6px 10px; font-size: 0.8rem; }
+  .nav-user { font-size: 0.78rem; padding: 5px 10px; }
+  .nav-points { font-size: 0.75rem; padding: 2px 8px; }
+
+  /* 카드·컨테이너 */
+  .app-container { padding: 10px; }
+  .card { padding: 14px; border-radius: 16px; }
+
+  /* 차시 그리드 */
+  .session-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+
+  /* 상점 */
+  .shop-grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
+
+  /* 모달 */
+  .modal-box { padding: 20px; border-radius: 20px; }
+
+  /* 마음의 집 */
+  .home-scene { height: 240px; }
+  .inventory-item { width: 44px; height: 44px; font-size: 1.5rem; }
+  .home-toolbar { gap: 8px; }
+
+  /* 기타 */
+  .student-row { gap: 10px; padding: 12px; }
+  .points-value { font-size: 1.6rem; }
+  .toast {
+    font-size: 0.85rem;
+    padding: 12px 20px;
+    width: 88%;
+    text-align: center;
+    white-space: normal;
   }
 }
-@media (max-width: 480px) {
-  .session-grid {
-    grid-template-columns: repeat(2, 1fr);
-  }
-  .modal-box {
-    padding: 20px;
-  }
-  .login-box {
-    padding: 24px 20px;
-  }
+
+/* 소형 모바일 (360px 이하) */
+@media (max-width: 360px) {
+  .landing-logo { font-size: 1.25rem; }
+  .character { width: 38px; height: 38px; font-size: 1.1rem; }
+  .character-row { gap: 6px; }
+  .role-card { width: 128px; padding: 16px 10px; }
+  .session-grid { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+  .shop-grid { grid-template-columns: repeat(2, 1fr); }
+  .nav-item { padding: 5px 8px; font-size: 0.75rem; }
 }
