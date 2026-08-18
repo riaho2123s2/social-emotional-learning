@@ -5,8 +5,10 @@ import Landing from './pages/Landing';
 import StudentDashboard from './pages/StudentDashboard';
 import TeacherDashboard from './pages/TeacherDashboard';
 import Shop from './pages/Shop';
-import HomeDecor from './pages/HomeDecor';
 import CharDress from './pages/CharDress';
+import HomeDecor from './pages/HomeDecor';
+import SessionManage from './pages/SessionManage';
+import PuzzleGame from './pages/PuzzleGame';
 import './styles/global.css';
 
 function AppContent() {
@@ -17,8 +19,10 @@ function AppContent() {
     student: <StudentDashboard />,
     teacher: <TeacherDashboard />,
     shop: <Shop />,
-    'home-decor': <HomeDecor />,
     'char-dress': <CharDress />,
+    'home-decor': <HomeDecor />,
+    'session-manage': <SessionManage />,
+    'puzzle': <PuzzleGame />,
   };
 
   return (

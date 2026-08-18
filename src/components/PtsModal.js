@@ -4,7 +4,6 @@ import { useApp } from '../context/AppContext';
 export default function PtsModal({ target, onClose }) {
   const { studentData, updateStudentData, setPointHistory, showToast } = useApp();
   const [amount, setAmount] = useState('');
-  const [reason, setReason] = useState('');
 
   if (!target) return null;
 
@@ -12,22 +11,18 @@ export default function PtsModal({ target, onClose }) {
   const displayName = target.name || data?.name || target.id;
   const displayPts = data?.points ?? 0;
 
-  function givePoints() {
+  async function givePoints() {
     const pts = parseInt(amount);
     if (!pts || pts <= 0) {
       showToast('포인트를 올바르게 입력해주세요!');
       return;
     }
-    if (!reason.trim()) {
-      showToast('지급 이유를 입력해주세요!');
-      return;
-    }
 
     const now = new Date().toLocaleString('ko-KR');
-    const logEntry = { pts, reason: reason.trim(), date: now, type: 'earn' };
+    const logEntry = { pts, date: now, type: 'earn' };
     const newPts = (data?.points || 0) + pts;
 
-    updateStudentData(target.id, (prev) => ({
+    await updateStudentData(target.id, (prev) => ({
       ...prev,
       points: newPts,
       history: [logEntry, ...(prev.history || [])],
@@ -38,7 +33,6 @@ export default function PtsModal({ target, onClose }) {
         studentId: target.id,
         name: displayName,
         pts,
-        reason: reason.trim(),
         date: now,
         type: 'earn',
       },
@@ -69,13 +63,6 @@ export default function PtsModal({ target, onClose }) {
           max="500"
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
-        />
-        <textarea
-          className="form-input"
-          placeholder="지급 이유 (예: 1차시 미션 완료)"
-          style={{ height: 80, resize: 'none', marginBottom: 12 }}
-          value={reason}
-          onChange={(e) => setReason(e.target.value)}
         />
         <button className="btn-primary" onClick={givePoints}>
           ✨ 지급하기

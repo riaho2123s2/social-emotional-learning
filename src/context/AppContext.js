@@ -1,6 +1,6 @@
-import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
 import { supabase } from '../lib/supabase';
-import { SESSIONS } from '../data/sessions';
+import { SESSIONS, MISSIONS, getDefaultMission } from '../data/sessions';
 
 const AppContext = createContext(null);
 
@@ -9,6 +9,7 @@ function profileToStudentEntry(profile) {
     name: profile.name,
     emoji: profile.emoji || '🧒',
     points: profile.points || 0,
+    coins: profile.coins || 0,
     completed: profile.completed || [],
     history: profile.history || [],
     inventory: profile.inventory || [],
@@ -23,10 +24,21 @@ export function AppProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [currentUserRole, setCurrentUserRole] = useState(null);
   const [studentData, setStudentData] = useState({});
+  const studentDataRef = useRef({});
   const [sessionLocks, setSessionLocks] = useState(SESSIONS.map((s) => s.locked));
+  const [customSessions, setCustomSessions] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sel_customSessions') || '{}'); }
+    catch { return {}; }
+  });
+  const [customMissions, setCustomMissions] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('sel_customMissions') || '{}'); }
+    catch { return {}; }
+  });
   const [pointHistory, setPointHistory] = useState([]);
   const [toast, setToast] = useState('');
   const [toastVisible, setToastVisible] = useState(false);
+
+  useEffect(() => { studentDataRef.current = studentData; }, [studentData]);
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -106,26 +118,23 @@ export function AppProvider({ children }) {
     showToast('로그아웃 되었습니다 👋');
   }, [showToast]);
 
-  const updateStudentData = useCallback((uid, updater) => {
-    setStudentData((prev) => {
-      const existing = prev[uid] || {
-        name: '', emoji: '🧒', points: 0, completed: [], history: [],
-        inventory: [], homeItems: [], chars: {},
-      };
-      const updated = updater(existing);
-
-      supabase.from('profiles').update({
-        points: updated.points,
-        completed: updated.completed,
-        history: updated.history,
-        inventory: updated.inventory,
-        home_items: updated.homeItems,
-        chars: updated.chars,
-        emoji: updated.emoji,
-      }).eq('id', uid);
-
-      return { ...prev, [uid]: updated };
-    });
+  const updateStudentData = useCallback(async (uid, updater) => {
+    const existing = studentDataRef.current[uid] || {
+      name: '', emoji: '🧒', points: 0, completed: [], history: [],
+      inventory: [], homeItems: [], chars: {},
+    };
+    const updated = updater(existing);
+    setStudentData((prev) => ({ ...prev, [uid]: updated }));
+    await supabase.from('profiles').update({
+      points: updated.points,
+      coins: updated.coins,
+      completed: updated.completed,
+      history: updated.history,
+      inventory: updated.inventory,
+      home_items: updated.homeItems,
+      chars: updated.chars,
+      emoji: updated.emoji,
+    }).eq('id', uid);
   }, []);
 
   const getLevel = useCallback((pts) => {
@@ -149,6 +158,32 @@ export function AppProvider({ children }) {
     return { remaining: 0, pct: 100 };
   }, []);
 
+  const effectiveSessions = SESSIONS.map((s) => ({
+    ...s,
+    ...(customSessions[s.id] || {}),
+  }));
+
+  const updateSession = useCallback((id, fields) => {
+    setCustomSessions((prev) => {
+      const next = { ...prev, [id]: { ...(prev[id] || {}), ...fields } };
+      localStorage.setItem('sel_customSessions', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
+  const getEffectiveMission = useCallback((session) => {
+    if (customMissions[session.id]) return customMissions[session.id];
+    return MISSIONS[session.id] || getDefaultMission(session);
+  }, [customMissions]);
+
+  const updateMission = useCallback((id, missionData) => {
+    setCustomMissions((prev) => {
+      const next = { ...prev, [id]: missionData };
+      localStorage.setItem('sel_customMissions', JSON.stringify(next));
+      return next;
+    });
+  }, []);
+
   const setChar = useCallback((uid, who, charData) => {
     setStudentData((prev) => {
       const student = prev[uid] || {};
@@ -166,6 +201,8 @@ export function AppProvider({ children }) {
     studentData, setStudentData,
     updateStudentData,
     sessionLocks, setSessionLocks,
+    effectiveSessions, updateSession,
+    getEffectiveMission, updateMission,
     pointHistory, setPointHistory,
     toast, toastVisible, showToast,
     getLevel, getNextLevel,

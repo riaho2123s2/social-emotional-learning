@@ -844,6 +844,10 @@ body::before {
   border-color: var(--mint);
   background: var(--mint-light);
 }
+.shop-item.cant-afford {
+  opacity: 0.55;
+  cursor: default;
+}
 .shop-item-icon {
   font-size: 3rem;
   margin-bottom: 10px;
@@ -1132,8 +1136,8 @@ body::before {
 .rank-item {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px 16px;
+  gap: 8px;
+  padding: 10px 12px;
   border-radius: 16px;
   margin-bottom: 8px;
   border: 2px solid var(--border);
@@ -1154,27 +1158,36 @@ body::before {
   background: var(--white);
 }
 .rank-num {
-  font-size: 1.3rem;
+  font-size: 1.2rem;
   font-weight: 800;
-  width: 28px;
+  width: 24px;
   text-align: center;
+  flex-shrink: 0;
 }
 .rank-avatar {
-  width: 38px;
-  height: 38px;
+  width: 32px;
+  height: 32px;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1.3rem;
+  font-size: 1.1rem;
+  flex-shrink: 0;
 }
 .rank-name {
   flex: 1;
   font-weight: 800;
+  font-size: 0.88rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 .rank-pts {
   font-weight: 800;
-  font-size: 1.05rem;
+  font-size: 0.88rem;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 
 /* ======= 토스트 알림 ======= */

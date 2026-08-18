@@ -1,383 +1,557 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import TopNav from '../components/TopNav';
 import { useApp } from '../context/AppContext';
-import { SHOP_ITEMS, SKIN_COLORS, defaultChar } from '../data/shopItems';
+import { defaultChar, SKIN_COLORS } from '../data/shopItems';
 
-const FAMILY_MEMBERS = [
-  { id: 'me', label: '🙋 나' },
-  { id: 'dad', label: '👨 아빠' },
-  { id: 'mom', label: '👩 엄마' },
-  { id: 'sibling', label: '👦 형제/자매' },
-  { id: 'pet2', label: '🐾 반려동물' },
-];
+// ── LPC Sprite config ──────────────────────────────────────────────
+const LPC = 'https://raw.githubusercontent.com/LiberatedPixelCup/Universal-LPC-Spritesheet-Character-Generator/master/spritesheets/';
+// walk.png layout: 9 cols × 4 rows, 64×64 each. Row 2 (y=128) = front-facing.
+const SX = 0, SY = 128, SW = 64, SH = 64;
 
-const PART_TABS = [
-  { key: 'hair', label: '💇 머리' },
-  { key: 'face', label: '😊 표정' },
-  { key: 'top', label: '👕 상의' },
-  { key: 'bottom', label: '👖 하의' },
-  { key: 'shoes', label: '👟 신발' },
-  { key: 'acc', label: '🎀 악세서리' },
-  { key: 'skin', label: '🎨 피부색' },
-];
-
-const DEFAULT_ITEMS = {
-  hair: { id: 'h0', name: '기본 머리', emoji: '💇', price: 0, cat: 'hair' },
-  face: { id: 'f0', name: '기본 표정', emoji: '😐', price: 0, cat: 'face' },
-  top: { id: 't0', name: '기본 상의', emoji: '👕', price: 0, cat: 'top' },
-  bottom: { id: 'b0', name: '기본 하의', emoji: '👖', price: 0, cat: 'bottom' },
-  shoes: { id: 'sh0', name: '기본 신발', emoji: '👟', price: 0, cat: 'shoes' },
-  acc: { id: 'ac0', name: '없음', emoji: '✕', price: 0, cat: 'acc' },
-};
-
-function drawCharacter(canvas, charData, scale = 1) {
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  const w = canvas.width,
-    h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-
-  const c = charData || defaultChar();
-  const cx = w / 2;
-  const s = scale;
-
-  const hairItem = SHOP_ITEMS.find((i) => i.id === c.hair);
-  const faceItem = SHOP_ITEMS.find((i) => i.id === c.face);
-  const topItem = SHOP_ITEMS.find((i) => i.id === c.top);
-  const botItem = SHOP_ITEMS.find((i) => i.id === c.bottom);
-  const shoeItem = SHOP_ITEMS.find((i) => i.id === c.shoes);
-  const accItem = c.acc ? SHOP_ITEMS.find((i) => i.id === c.acc) : null;
-
-  ctx.font = `${28 * s}px serif`;
-  ctx.textAlign = 'center';
-  ctx.fillText(shoeItem ? shoeItem.emoji : '👟', cx, h * 0.93);
-  ctx.font = `${34 * s}px serif`;
-  ctx.fillText(botItem ? botItem.emoji : '👖', cx, h * 0.77);
-  ctx.font = `${36 * s}px serif`;
-  ctx.fillText(topItem ? topItem.emoji : '👕', cx, h * 0.56);
-  ctx.font = `${44 * s}px serif`;
-  ctx.fillText(faceItem ? faceItem.emoji : '😊', cx, h * 0.34);
-  ctx.font = `${36 * s}px serif`;
-  ctx.fillText(hairItem ? hairItem.emoji : '💇', cx, h * 0.13);
-  if (accItem) {
-    ctx.font = `${26 * s}px serif`;
-    ctx.fillText(accItem.emoji, cx + 30 * s, h * 0.34);
-  }
+const imgCache = new Map();
+function loadImg(url) {
+  if (imgCache.has(url)) return Promise.resolve(imgCache.get(url));
+  return new Promise((res) => {
+    const img = new Image();
+    img.crossOrigin = 'anonymous';
+    img.onload  = () => { imgCache.set(url, img);  res(img); };
+    img.onerror = () => { imgCache.set(url, null); res(null); };
+    img.src = url;
+  });
 }
 
+async function drawLayer(ctx, url, tintColor, tintAlpha = 0.55) {
+  const img = await loadImg(url);
+  if (!img) return;
+  const tmp = document.createElement('canvas');
+  tmp.width = 64; tmp.height = 64;
+  const tc = tmp.getContext('2d');
+  tc.drawImage(img, SX, SY, SW, SH, 0, 0, 64, 64);
+  if (tintColor) {
+    tc.globalCompositeOperation = 'source-atop';
+    tc.fillStyle = tintColor;
+    tc.globalAlpha = tintAlpha;
+    tc.fillRect(0, 0, 64, 64);
+  }
+  ctx.drawImage(tmp, 0, 0);
+}
+
+// ── URL builders (paths verified against repo) ─────────────────────
+const HAIR_KEY = { h0:'bob', h1:'long', h2:'bangs', h3:'ponytail', h4:'braid', h5:'curly_short', h6:'pixie' };
+const TOP_KEY  = { t0:'tshirt', t1:'tshirt_vneck', t2:'tshirt_scoop', t3:'shortsleeve_cardigan', t4:'shortsleeve_polo', t5:'tshirt_buttoned' };
+const BOT_KEY  = { b0:'pants', b1:'shorts', b2:'skirts', b3:'pants' };
+const SHOE_KEY = { sh0:'shoes', sh1:'boots', sh2:'shoes', sh3:'boots' };
+
+const hairUrl = (s)     => `${LPC}hair/${HAIR_KEY[s] || 'bob'}/adult/walk.png`;
+const bodyUrl = (g)     => `${LPC}body/bodies/${g}/walk.png`;
+const topUrl  = (s, g)  => `${LPC}torso/clothes/shortsleeve/${TOP_KEY[s] || 'tshirt'}/${g}/walk.png`;
+const botUrl  = (s, g)  => `${LPC}legs/${BOT_KEY[s] || 'pants'}/${g === 'female' ? 'thin' : 'male'}/walk.png`;
+const shoeUrl = (s)     => `${LPC}feet/${SHOE_KEY[s] || 'shoes'}/basic/male/walk.png`;
+
+// ── Auto-detect head bounding box from LPC body sprite pixels ─────────
+const headCache = new Map();
+async function detectHeadCenter(gender) {
+  if (headCache.has(gender)) return headCache.get(gender);
+  const fallback = { cx: 32, cy: 16, rx: 8, ry: 9 };
+  const img = await loadImg(bodyUrl(gender));
+  if (!img) { headCache.set(gender, fallback); return fallback; }
+  const tmp = document.createElement('canvas');
+  tmp.width = 64; tmp.height = 64;
+  const tc = tmp.getContext('2d');
+  tc.drawImage(img, SX, SY, SW, SH, 0, 0, 64, 64);
+  const d = tc.getImageData(0, 0, 64, 64).data;
+  // Scan only the central column (avoid detecting arms) in the upper half
+  let minY = 64, maxY = 0, minX = 64, maxX = 0;
+  for (let y = 4; y < 36; y++) {
+    for (let x = 20; x < 44; x++) {
+      if (d[(y * 64 + x) * 4 + 3] > 120) {
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+      }
+    }
+  }
+  const result = (maxY > minY && maxX > minX)
+    ? { cx: (minX + maxX) / 2, cy: (minY + maxY) / 2, rx: (maxX - minX) / 2, ry: (maxY - minY) / 2 }
+    : fallback;
+  headCache.set(gender, result);
+  return result;
+}
+
+// Face shape scale factors applied on top of detected head size
+const FACE_SHAPES = {
+  fs0: { rxS: 1.00, ryS: 1.00 },  // 동그란
+  fs1: { rxS: 0.78, ryS: 1.18 },  // 갸름한
+  fs2: { rxS: 1.22, ryS: 0.82 },  // 귀여운(넓적)
+  fs3: { rxS: 1.00, ryS: 1.00 },  // 기본형
+};
+
+// All sizes/positions derived proportionally from detected head bounds
+function drawFaceCanvas(ctx, char, head) {
+  const skin  = char.skin      || '#FFDBB5';
+  const hairC = char.hairColor || '#4A2C0A';
+  const expr  = char.eyeStyle  || 'e0';
+  const shape = FACE_SHAPES[char.faceShape] || FACE_SHAPES.fs0;
+
+  const { cx, cy, rx: hrx, ry: hry } = head;
+  const rx = hrx * shape.rxS;
+  const ry = hry * shape.ryS;
+
+  // Hair covers top ~38% of head height — features live below that line
+  const foreheadY = cy - hry * 0.38;
+  const chinY     = cy + hry;
+  const faceH     = chinY - foreheadY;
+
+  const EY  = foreheadY + faceH * 0.30;        // eyes
+  const BY  = foreheadY + faceH * 0.08;        // eyebrows
+  const LX  = cx - hrx * 0.38;
+  const RX  = cx + hrx * 0.38;
+
+  const eRx  = hrx * 0.28;                     // eye white x-radius
+  const eRy  = hry * 0.20;                     // eye white y-radius
+  const iR   = hrx * 0.17;                     // iris radius
+  const pR   = hrx * 0.085;                    // pupil radius
+  const bW   = hrx * 0.34;                     // eyebrow half-width
+  const nY   = foreheadY + faceH * 0.60;       // nose y
+  const nW   = hrx * 0.11;                     // nose dot offset
+  const nR   = hrx * 0.075;                    // nose dot radius
+  const mY   = foreheadY + faceH * 0.82;       // mouth y
+  const mR   = hrx * 0.30;                     // mouth arc radius
+
+  ctx.save();
+
+  // 1. Face oval
+  ctx.fillStyle = skin;
+  ctx.beginPath();
+  ctx.ellipse(cx, cy, rx, ry, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(70,30,5,0.16)';
+  ctx.lineWidth = 0.5;
+  ctx.stroke();
+
+  // 2. Blush cheeks
+  ctx.fillStyle = 'rgba(255,110,110,0.28)';
+  ctx.beginPath(); ctx.ellipse(cx - hrx * 0.68, foreheadY + faceH * 0.52, hrx * 0.22, hry * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx + hrx * 0.68, foreheadY + faceH * 0.52, hrx * 0.22, hry * 0.12, 0, 0, Math.PI * 2); ctx.fill();
+
+  // 3. Eyebrows
+  ctx.strokeStyle = hairC;
+  ctx.lineWidth = Math.max(0.7, hrx * 0.09);
+  ctx.lineCap = 'round';
+  switch (expr) {
+    case 'e3':
+      ctx.beginPath(); ctx.moveTo(LX - bW, BY - hry*0.05); ctx.lineTo(LX + bW, BY + hry*0.04); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(RX + bW, BY - hry*0.05); ctx.lineTo(RX - bW, BY + hry*0.04); ctx.stroke();
+      break;
+    case 'e2':
+      ctx.beginPath(); ctx.moveTo(LX - bW, BY + hry*0.04); ctx.lineTo(LX + bW, BY - hry*0.05); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(RX - bW, BY - hry*0.05); ctx.lineTo(RX + bW, BY + hry*0.04); ctx.stroke();
+      break;
+    case 'e4':
+      ctx.beginPath(); ctx.moveTo(LX - bW, BY - hry*0.07); ctx.lineTo(LX + bW, BY - hry*0.07); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(RX - bW, BY - hry*0.07); ctx.lineTo(RX + bW, BY - hry*0.07); ctx.stroke();
+      break;
+    default:
+      ctx.beginPath(); ctx.moveTo(LX - bW, BY); ctx.quadraticCurveTo(LX, BY - hry*0.10, LX + bW, BY); ctx.stroke();
+      ctx.beginPath(); ctx.moveTo(RX - bW, BY); ctx.quadraticCurveTo(RX, BY - hry*0.10, RX + bW, BY); ctx.stroke();
+  }
+
+  // 4. Eyes — whites
+  ctx.fillStyle = 'white';
+  ctx.beginPath(); ctx.ellipse(LX, EY, eRx, eRy, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(RX, EY, eRx, eRy, 0, 0, Math.PI * 2); ctx.fill();
+
+  // Eyelid overlays
+  if (expr === 'e1') {
+    ctx.fillStyle = skin;
+    ctx.beginPath(); ctx.ellipse(LX, EY - eRy*0.55, eRx, eRy*0.65, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.ellipse(RX, EY - eRy*0.55, eRx, eRy*0.65, 0, 0, Math.PI * 2); ctx.fill();
+  }
+  if (expr === 'e2') {
+    ctx.fillStyle = skin;
+    ctx.save(); ctx.translate(LX, EY); ctx.rotate(-0.25);
+    ctx.beginPath(); ctx.ellipse(0, -eRy*0.55, eRx, eRy*0.65, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+    ctx.save(); ctx.translate(RX, EY); ctx.rotate(0.25);
+    ctx.beginPath(); ctx.ellipse(0, -eRy*0.55, eRx, eRy*0.65, 0, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  }
+
+  // Iris
+  ctx.fillStyle = '#5A3010';
+  ctx.beginPath(); ctx.arc(LX, EY + eRy*0.15, iR, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(RX, EY + eRy*0.15, iR, 0, Math.PI * 2); ctx.fill();
+
+  // Pupil
+  ctx.fillStyle = '#130800';
+  ctx.beginPath(); ctx.arc(LX, EY + eRy*0.15, pR, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(RX, EY + eRy*0.15, pR, 0, Math.PI * 2); ctx.fill();
+
+  // Highlight
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.beginPath(); ctx.arc(LX + iR*0.4, EY - eRy*0.2, pR*0.6, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(RX + iR*0.4, EY - eRy*0.2, pR*0.6, 0, Math.PI * 2); ctx.fill();
+
+  // Eye outline
+  ctx.strokeStyle = 'rgba(30,10,0,0.65)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath(); ctx.ellipse(LX, EY, eRx, eRy, 0, 0, Math.PI * 2); ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(RX, EY, eRx, eRy, 0, 0, Math.PI * 2); ctx.stroke();
+
+  // 5. Nose
+  ctx.fillStyle = 'rgba(70,30,5,0.35)';
+  ctx.beginPath(); ctx.arc(cx - nW, nY, nR, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + nW, nY, nR, 0, Math.PI * 2); ctx.fill();
+
+  // 6. Mouth
+  ctx.strokeStyle = 'rgba(80,28,8,0.82)';
+  ctx.fillStyle   = 'rgba(80,28,8,0.78)';
+  ctx.lineWidth   = Math.max(0.7, hrx * 0.09);
+  ctx.lineCap     = 'round';
+  switch (expr) {
+    case 'e0':
+      ctx.beginPath(); ctx.arc(cx, mY - mR*0.5, mR, 0.2, Math.PI - 0.2); ctx.stroke(); break;
+    case 'e1':
+      ctx.beginPath(); ctx.moveTo(cx - mR, mY); ctx.lineTo(cx + mR, mY); ctx.stroke(); break;
+    case 'e2':
+      ctx.beginPath(); ctx.arc(cx, mY + mR*0.5, mR, -Math.PI + 0.2, -0.2); ctx.stroke(); break;
+    case 'e3':
+      ctx.beginPath(); ctx.moveTo(cx - mR, mY + mR*0.2); ctx.lineTo(cx + mR, mY - mR*0.2); ctx.stroke(); break;
+    case 'e4':
+      ctx.beginPath(); ctx.ellipse(cx, mY, mR*0.5, mR*0.75, 0, 0, Math.PI * 2); ctx.fill(); break;
+    default:
+      ctx.beginPath(); ctx.arc(cx, mY - mR*0.5, mR, 0.2, Math.PI - 0.2); ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+async function renderChar(canvas, char) {
+  const ctx = canvas.getContext('2d');
+  ctx.clearRect(0, 0, 64, 64);
+  const g = char.gender || 'female';
+  const head = await detectHeadCenter(g);
+  await drawLayer(ctx, bodyUrl(g),                            char.skin,        0.70);
+  drawFaceCanvas(ctx, char, head);
+  await drawLayer(ctx, shoeUrl(char.shoesStyle || 'sh0'),    char.shoesColor,  0.65);
+  await drawLayer(ctx, botUrl(char.bottomStyle || 'b0',  g), char.bottomColor, 0.65);
+  await drawLayer(ctx, topUrl(char.topStyle    || 't0',  g), char.topColor,    0.65);
+  await drawLayer(ctx, hairUrl(char.hairStyle  || 'h0'),     char.hairColor,   0.65);
+}
+
+// ── Option lists ───────────────────────────────────────────────────
+const HAIR_OPTS = [
+  { id:'h0', name:'보브컷',   emoji:'💇' },
+  { id:'h1', name:'긴 직모',  emoji:'👱‍♀️' },
+  { id:'h2', name:'뱅스',     emoji:'🎀' },
+  { id:'h3', name:'포니테일', emoji:'🐴' },
+  { id:'h4', name:'땋은 머리',emoji:'🌿' },
+  { id:'h5', name:'곱슬 단발',emoji:'🌀' },
+  { id:'h6', name:'픽시컷',   emoji:'✂️' },
+];
+const EYE_OPTS = [
+  { id:'e0', name:'기본',  emoji:'😊' },
+  { id:'e1', name:'평온',  emoji:'😐' },
+  { id:'e2', name:'슬픔',  emoji:'😢' },
+  { id:'e3', name:'화남',  emoji:'😠' },
+  { id:'e4', name:'놀람',  emoji:'😲' },
+];
+const FACE_OPTS = [
+  { id:'fs0', name:'동그란',  emoji:'🔵' },
+  { id:'fs1', name:'갸름한',  emoji:'🥚' },
+  { id:'fs2', name:'귀여운',  emoji:'🍑' },
+  { id:'fs3', name:'기본형',  emoji:'⬜' },
+];
+const HAIR_COLORS = [
+  '#1A0A00','#3D1C02','#6B3A1F','#8B4513','#C68642',
+  '#E8C49A','#FFE4B5','#FFD700','#FF4444','#FF69B4',
+  '#9B59B6','#3498DB','#1ABC9C','#2ECC71','#FFFFFF',
+];
+// ── UI helpers ─────────────────────────────────────────────────────
+const OR = '#E8A050';
+const BG = '#F5E6C8';
+
+function TabBtn({ active, onClick, icon, label }) {
+  return (
+    <button onClick={onClick} style={{
+      display:'flex', flexDirection:'column', alignItems:'center', gap:3,
+      padding:'10px', borderRadius:14,
+      border:`3px solid ${active ? '#C07020' : '#C8A870'}`,
+      background: active ? OR : BG,
+      color: active ? 'white' : '#5A3A1A',
+      fontFamily:'var(--font)', fontWeight:800, fontSize:'0.68rem',
+      cursor:'pointer', minWidth:60,
+    }}>
+      <span style={{fontSize:'1.4rem'}}>{icon}</span>{label}
+    </button>
+  );
+}
+
+function StyleCard({ item, active, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      display:'flex', flexDirection:'column', alignItems:'center', gap:4,
+      padding:'10px 8px', borderRadius:14, minWidth:70,
+      border:`3px solid ${active ? '#C07020' : '#D4B880'}`,
+      background: active ? '#F5D5A0' : '#FFF8EE',
+      cursor:'pointer', fontFamily:'var(--font)',
+      boxShadow: active ? '0 2px 8px rgba(200,112,32,0.3)' : 'none',
+    }}>
+      <span style={{fontSize:'1.7rem',lineHeight:1}}>{item.emoji}</span>
+      <span style={{fontSize:'0.64rem',fontWeight:700,color:'#5A3A1A',textAlign:'center',lineHeight:1.2}}>
+        {item.name}
+      </span>
+    </button>
+  );
+}
+
+function Swatch({ color, active, onClick }) {
+  return (
+    <button onClick={onClick} style={{
+      width:34, height:34, borderRadius:8,
+      background: color || '#eee',
+      border: active ? '3px solid white' : '2px solid rgba(0,0,0,0.18)',
+      cursor:'pointer',
+      boxShadow: active ? '0 0 0 2.5px #E8A050' : '0 1px 3px rgba(0,0,0,0.15)',
+    }}/>
+  );
+}
+
+function PanelTitle({ children }) {
+  return <div style={{fontSize:'0.88rem',fontWeight:800,color:'#5A3A1A',marginBottom:10}}>{children}</div>;
+}
+function Grid({ children }) {
+  return <div style={{display:'flex',flexWrap:'wrap',gap:8}}>{children}</div>;
+}
+function SwGrid({ children }) {
+  return <div style={{display:'flex',flexWrap:'wrap',gap:7}}>{children}</div>;
+}
+
+// ── Mini canvas (family preview row) ──────────────────────────────
+function MiniCharCanvas({ char, size }) {
+  const ref = useRef(null);
+  const s   = size || 48;
+  useEffect(() => {
+    if (!ref.current) return;
+    renderChar(ref.current, char || defaultChar()).catch(() => {});
+  }, [char]);
+  return (
+    <canvas ref={ref} width={64} height={64}
+      style={{ width:s, height:s, imageRendering:'pixelated', display:'block' }}
+    />
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────
 export default function CharDress() {
-  const { showPage, currentUser, currentUserRole, studentData, setChar, showToast } = useApp();
-  const [familyTab, setFamilyTab] = useState('me');
-  const [partTab, setPartTab] = useState('hair');
+  const { showPage, currentUser, currentUserRole, studentData, updateStudentData } = useApp();
+
+  const [who,         setWho]         = useState('self');
+  const [faceTab,     setFaceTab]     = useState('hair');
+  const [loading,     setLoading]     = useState(false);
+  const [teacherChar, setTeacherChar] = useState(defaultChar());
 
   const canvasRef = useRef(null);
+  const uid    = currentUser?.id;
+  const myData = studentData[uid];
 
-  const uid = currentUser?.id;
-  const data = studentData[uid];
-  const inventory = currentUserRole === 'student' ? data?.inventory || [] : [];
-  const userName =
-    currentUserRole === 'teacher' ? '👩‍🏫 선생님' : `${data?.emoji || '🧒'} ${data?.name || ''}`;
-  const backPage = currentUserRole === 'teacher' ? 'teacher' : 'student';
+  const getChar = useCallback((w) => ({
+    ...defaultChar(), ...(myData?.chars?.[w] || {}),
+  }), [myData]);
 
-  // 현재 캐릭터 데이터
-  const currentCharData =
-    currentUserRole === 'student' && uid
-      ? data?.chars?.[familyTab] || defaultChar()
-      : defaultChar();
-
-  // 캐릭터 그리기
-  const redrawCanvas = useCallback(() => {
-    if (canvasRef.current) {
-      drawCharacter(canvasRef.current, currentCharData, 1);
-    }
-  }, [currentCharData]);
+  const isStu = currentUserRole === 'student';
+  const char  = isStu ? getChar(who) : teacherChar;
 
   useEffect(() => {
-    redrawCanvas();
-  }, [redrawCanvas]);
+    if (!canvasRef.current) return;
+    let alive = true;
+    setLoading(true);
+    renderChar(canvasRef.current, char)
+      .then(() => { if (alive) setLoading(false); })
+      .catch(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, [char]);
 
-  // 말풍선
-  const speech = currentCharData.speech || '안녕하세요! 😊';
-
-  function updateSpeech(val) {
-    if (currentUserRole !== 'student' || !uid) return;
-    const updated = { ...currentCharData, speech: val };
-    setChar(uid, familyTab, updated);
+  function saveChar(updates) {
+    if (!isStu) { setTeacherChar((p) => ({ ...p, ...updates })); return; }
+    if (!uid) return;
+    const next = { ...char, ...updates };
+    updateStudentData(uid, (prev) => ({
+      ...prev,
+      chars: { ...(prev.chars || {}), [who]: next },
+    }));
   }
 
-  function equipItem(part, itemId) {
-    if (currentUserRole !== 'student' || !uid) return;
-    const updated = { ...currentCharData, [part]: itemId };
-    setChar(uid, familyTab, updated);
-    showToast(`${SHOP_ITEMS.find((i) => i.id === itemId)?.emoji || ''} 착용 완료!`);
+  const backPage = isStu ? 'home-decor' : 'teacher';
+  const userName = isStu ? `${myData?.emoji || '🧒'} ${myData?.name || ''}` : '👩‍🏫 선생님';
+  const navItems = [{ label: '◀ 뒤로', onClick: () => showPage(backPage) }];
+
+  function FacePanel() {
+    switch (faceTab) {
+      case 'faceShape':
+        return (<>
+          <PanelTitle>🥚 얼굴 모양</PanelTitle>
+          <Grid>{FACE_OPTS.map(o => (
+            <StyleCard key={o.id} item={o} active={char.faceShape === o.id} onClick={() => saveChar({ faceShape: o.id })} />
+          ))}</Grid>
+        </>);
+      case 'hair':
+        return (<>
+          <PanelTitle>💇 머리 스타일</PanelTitle>
+          <Grid>{HAIR_OPTS.map(o => (
+            <StyleCard key={o.id} item={o} active={char.hairStyle === o.id} onClick={() => saveChar({ hairStyle: o.id })} />
+          ))}</Grid>
+        </>);
+      case 'hairColor':
+        return (<>
+          <PanelTitle>🎨 머리 색상</PanelTitle>
+          <SwGrid>{HAIR_COLORS.map(c => (
+            <Swatch key={c} color={c} active={char.hairColor === c} onClick={() => saveChar({ hairColor: c })} />
+          ))}</SwGrid>
+        </>);
+      case 'eye':
+        return (<>
+          <PanelTitle>👁️ 눈 표정</PanelTitle>
+          <Grid>{EYE_OPTS.map(o => (
+            <StyleCard key={o.id} item={o} active={char.eyeStyle === o.id} onClick={() => saveChar({ eyeStyle: o.id })} />
+          ))}</Grid>
+        </>);
+      case 'skin':
+        return (<>
+          <PanelTitle>🤚 피부색</PanelTitle>
+          <SwGrid>{SKIN_COLORS.map(c => (
+            <Swatch key={c} color={c} active={char.skin === c} onClick={() => saveChar({ skin: c })} />
+          ))}</SwGrid>
+        </>);
+      default: return null;
+    }
   }
-
-  function setSkin(color) {
-    if (currentUserRole !== 'student' || !uid) return;
-    const updated = { ...currentCharData, skin: color };
-    setChar(uid, familyTab, updated);
-    showToast('🎨 피부색을 바꿨어요!');
-  }
-
-  // 옷장 아이템
-  const catItems = SHOP_ITEMS.filter((i) => i.cat === partTab);
-  const allWardrobeItems = partTab === 'skin' ? [] : [DEFAULT_ITEMS[partTab], ...catItems];
-
-  const navItems = [
-    { label: '◀ 뒤로', onClick: () => showPage(backPage) },
-    { label: '🛍️ 상점', onClick: () => showPage('shop') },
-  ];
 
   return (
-    <div className="page-char-dress">
-      <TopNav logo="👤 내 캐릭터" menuItems={navItems} userLabel={userName} />
+    <div style={{ minHeight:'100vh', background:'#ffffff' }}>
+      <TopNav logo="🎨 캐릭터 꾸미기" menuItems={navItems} userLabel={userName} />
 
-      <div className="app-container" style={{ paddingTop: 20 }}>
-        <div style={{ textAlign: 'center', marginBottom: 20 }}>
-          <div style={{ fontSize: '1.8rem', fontWeight: 800 }}>✨ 나의 캐릭터 꾸미기</div>
-          <div style={{ fontSize: '0.9rem', color: 'var(--text-soft)', marginTop: 4 }}>
-            머리부터 신발까지 나만의 스타일을 만들어봐요!
+      <div className="app-container" style={{ paddingTop: 16 }}>
+
+        {/* Gender switcher */}
+        <div style={{ display:'flex', justifyContent:'center', gap:10, marginBottom:16 }}>
+          <div style={{ display:'flex', gap:6, background:'#FFF4E6', borderRadius:14, padding:6, border:'1px solid #F0D8C0' }}>
+            {[{ id:'female', label:'👧 여자' }, { id:'male', label:'👦 남자' }].map(({ id, label }) => (
+              <button key={id} onClick={() => saveChar({ gender: id })} style={{
+                padding:'7px 16px', borderRadius:10,
+                border:`3px solid ${char.gender === id ? '#C07020' : 'transparent'}`,
+                background: char.gender === id ? OR : 'transparent',
+                color: char.gender === id ? 'white' : '#5A3A1A',
+                fontFamily:'var(--font)', fontWeight:800, fontSize:'0.9rem', cursor:'pointer',
+              }}>{label}</button>
+            ))}
           </div>
         </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '1fr 1fr',
-            gap: 24,
-            maxWidth: 900,
-            margin: '0 auto',
-          }}
-        >
-          {/* 왼쪽: 캐릭터 프리뷰 */}
-          <div>
-            <div
-              className="card"
-              style={{
-                textAlign: 'center',
-                padding: '28px 20px',
-                background: 'linear-gradient(160deg,#f0d9ff,#d6f5ec)',
-              }}
-            >
-              <div style={{ fontSize: '1rem', fontWeight: 800, marginBottom: 16 }}>
-                👤 내 캐릭터 미리보기
-              </div>
+        {/* 3-column layout */}
+        <div style={{ display:'flex', gap:12, alignItems:'flex-start', justifyContent:'center', flexWrap:'wrap' }}>
 
-              <div style={{ position: 'relative', display: 'inline-block', marginBottom: 16 }}>
-                <canvas
-                  ref={canvasRef}
-                  width={200}
-                  height={280}
-                  style={{
-                    borderRadius: 20,
-                    background: 'linear-gradient(180deg,#e8f4fd,#f5e8ff)',
-                  }}
-                />
-              </div>
-
-              {/* 말풍선 */}
-              <div style={{ marginBottom: 16 }}>
-                <div
-                  style={{
-                    fontSize: '0.85rem',
-                    fontWeight: 800,
-                    marginBottom: 8,
-                    color: 'var(--text-soft)',
-                  }}
-                >
-                  💬 나의 말풍선
-                </div>
-                <div
-                  style={{
-                    position: 'relative',
-                    background: 'white',
-                    borderRadius: 16,
-                    border: '2px solid var(--border)',
-                    padding: '12px 14px',
-                    marginBottom: 8,
-                    minHeight: 48,
-                    fontSize: '0.9rem',
-                    fontWeight: 700,
-                    textAlign: 'left',
-                    wordBreak: 'break-all',
-                  }}
-                >
-                  {speech || '…'}
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: -12,
-                      left: 24,
-                      width: 0,
-                      height: 0,
-                      borderLeft: '10px solid transparent',
-                      borderRight: '10px solid transparent',
-                      borderTop: '12px solid white',
-                    }}
-                  />
-                  <div
-                    style={{
-                      position: 'absolute',
-                      bottom: -15,
-                      left: 22,
-                      width: 0,
-                      height: 0,
-                      borderLeft: '12px solid transparent',
-                      borderRight: '12px solid transparent',
-                      borderTop: '14px solid var(--border)',
-                      zIndex: -1,
-                    }}
-                  />
-                </div>
-                <input
-                  type="text"
-                  className="form-input"
-                  placeholder="말풍선에 쓸 내용을 입력해요!"
-                  maxLength={30}
-                  style={{ textAlign: 'center', fontSize: '0.95rem' }}
-                  value={
-                    speech === '안녕하세요! 😊' && currentCharData.speech === undefined
-                      ? ''
-                      : currentCharData.speech || ''
-                  }
-                  onChange={(e) => updateSpeech(e.target.value)}
-                />
-                <div
-                  style={{
-                    fontSize: '0.75rem',
-                    color: 'var(--text-soft)',
-                    marginTop: 4,
-                    textAlign: 'right',
-                  }}
-                >
-                  {(currentCharData.speech || '').length}/30자
-                </div>
-              </div>
-
-              {/* 가족 탭 */}
-              <div style={{ borderTop: '2px dashed var(--border)', paddingTop: 14 }}>
-                <div
-                  style={{
-                    fontSize: '0.85rem',
-                    fontWeight: 800,
-                    marginBottom: 10,
-                    color: 'var(--text-soft)',
-                  }}
-                >
-                  👨‍👩‍👧 가족 캐릭터도 꾸며봐요!
-                </div>
-                <div
-                  style={{ display: 'flex', gap: 8, justifyContent: 'center', flexWrap: 'wrap' }}
-                >
-                  {FAMILY_MEMBERS.map((m) => (
-                    <button
-                      key={m.id}
-                      className={`family-tab${familyTab === m.id ? ' active' : ''}`}
-                      onClick={() => setFamilyTab(m.id)}
-                    >
-                      {m.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* 가족 미리보기 */}
-            <div className="card" style={{ padding: 20 }}>
-              <div style={{ fontSize: '0.9rem', fontWeight: 800, marginBottom: 12 }}>
-                🏠 우리 가족
-              </div>
-              <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
-                {FAMILY_MEMBERS.map((m) => (
-                  <FamilyMiniCanvas
-                    key={m.id}
-                    member={m}
-                    charData={
-                      m.id === 'pet2'
-                        ? null
-                        : currentUserRole === 'student' && uid
-                          ? data?.chars?.[m.id] || defaultChar()
-                          : defaultChar()
-                    }
-                    selected={familyTab === m.id}
-                    onClick={() => setFamilyTab(m.id)}
-                  />
-                ))}
-              </div>
-            </div>
+          {/* Left tabs */}
+          <div style={{
+            display:'flex', flexDirection:'column', gap:8,
+            background:'#FFF4E6', borderRadius:20, padding:10,
+            border:'1px solid #F0D8C0',
+          }}>
+            <TabBtn active={faceTab==='faceShape'} onClick={() => setFaceTab('faceShape')} icon="🥚" label="얼굴 모양"/>
+            <TabBtn active={faceTab==='skin'}      onClick={() => setFaceTab('skin')}      icon="🤚" label="피부색"/>
+            <TabBtn active={faceTab==='eye'}       onClick={() => setFaceTab('eye')}       icon="👁️" label="눈 표정"/>
+            <TabBtn active={faceTab==='hair'}      onClick={() => setFaceTab('hair')}      icon="💇" label="머리 스타일"/>
+            <TabBtn active={faceTab==='hairColor'} onClick={() => setFaceTab('hairColor')} icon="🎨" label="머리 색상"/>
           </div>
 
-          {/* 오른쪽: 옷장 */}
-          <div>
-            <div className="card" style={{ padding: 20 }}>
-              <div style={{ fontSize: '1rem', fontWeight: 800, marginBottom: 14 }}>👗 옷장</div>
+          {/* Center preview */}
+          <div style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:12 }}>
+            <div style={{
+              position:'relative',
+              background:'#ffffff',
+              borderRadius:24, border:`4px solid ${OR}`,
+              padding:'20px 24px 16px',
+              boxShadow:'0 6px 24px rgba(0,0,0,0.12)',
+            }}>
+              {loading && (
+                <div style={{
+                  position:'absolute', inset:0, display:'flex',
+                  alignItems:'center', justifyContent:'center',
+                  background:'rgba(255,255,255,0.6)', borderRadius:20,
+                  fontSize:'1.8rem', zIndex:2,
+                }}>⏳</div>
+              )}
+              <canvas
+                ref={canvasRef}
+                width={64}
+                height={64}
+                style={{ width:192, height:192, imageRendering:'pixelated', display:'block', position:'relative', zIndex:1 }}
+              />
+            </div>
 
-              {/* 파트 탭 */}
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
-                {PART_TABS.map((t) => (
-                  <button
-                    key={t.key}
-                    className={`part-tab${partTab === t.key ? ' active' : ''}`}
-                    onClick={() => setPartTab(t.key)}
-                  >
-                    {t.label}
-                  </button>
+            <button
+              onClick={async () => {
+                const big = document.createElement('canvas');
+                big.width = 512; big.height = 512;
+                const bctx = big.getContext('2d');
+                bctx.imageSmoothingEnabled = false;
+                await renderChar(canvasRef.current, char);
+                bctx.drawImage(canvasRef.current, 0, 0, 64, 64, 0, 0, 512, 512);
+                const link = document.createElement('a');
+                link.download = `character_${Date.now()}.png`;
+                link.href = big.toDataURL('image/png');
+                link.click();
+              }}
+              style={{
+                padding:'10px 24px', borderRadius:14,
+                border:`3px solid #C07020`,
+                background: OR, color:'white',
+                fontFamily:'var(--font)', fontWeight:800, fontSize:'0.9rem',
+                cursor:'pointer', boxShadow:'0 3px 10px rgba(200,112,32,0.35)',
+              }}
+            >
+              💾 이미지로 저장
+            </button>
+
+            {isStu && (
+              <div style={{ display:'flex', gap:8 }}>
+                {[{ id:'self', label:'나' }, { id:'friend1', label:'친구 1' }, { id:'friend2', label:'친구 2' }].map(({ id, label }) => (
+                  <button key={id} onClick={() => setWho(id)} style={{
+                    padding:'6px 14px', borderRadius:12,
+                    border:`3px solid ${who === id ? '#C07020' : '#C8A870'}`,
+                    background: who === id ? OR : BG,
+                    color: who === id ? 'white' : '#5A3A1A',
+                    fontFamily:'var(--font)', fontWeight:800, fontSize:'0.85rem', cursor:'pointer',
+                  }}>{label}</button>
                 ))}
               </div>
+            )}
 
-              {/* 피부색 스와치 */}
-              {partTab === 'skin' && (
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap', padding: '8px 0' }}>
-                  {SKIN_COLORS.map((color) => (
-                    <div
-                      key={color}
-                      className={`skin-swatch${currentCharData.skin === color ? ' selected' : ''}`}
-                      style={{ background: color }}
-                      title={color}
-                      onClick={() => setSkin(color)}
-                    />
-                  ))}
-                </div>
-              )}
+            {isStu && (
+              <div style={{
+                background:'#FFF4E6', borderRadius:16,
+                padding:'10px 16px', display:'flex', gap:20, alignItems:'flex-end',
+                border:`2px solid ${OR}`,
+              }}>
+                {[{ id:'self', label:'나' }, { id:'friend1', label:'친구 1' }, { id:'friend2', label:'친구 2' }].map(({ id, label }) => (
+                  <div key={id} onClick={() => setWho(id)} style={{
+                    textAlign:'center', cursor:'pointer',
+                    opacity: who === id ? 1 : 0.55, transition:'opacity 0.2s',
+                  }}>
+                    <MiniCharCanvas char={getChar(id)} size={48}/>
+                    <div style={{ fontSize:'0.65rem', fontWeight:800, color:'#5A3A1A', marginTop:3 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
-              {/* 옷장 그리드 */}
-              {partTab !== 'skin' && (
-                <div
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: 'repeat(4,1fr)',
-                    gap: 10,
-                    maxHeight: 320,
-                    overflowY: 'auto',
-                  }}
-                >
-                  {allWardrobeItems.map((item) => {
-                    const owned = item.price === 0 || inventory.includes(item.id);
-                    const equipped =
-                      currentCharData[partTab] === item.id ||
-                      (item.id.endsWith('0') && !currentCharData[partTab]);
-                    return (
-                      <div
-                        key={item.id}
-                        className={`wardrobe-item${equipped ? ' equipped' : ''}${!owned ? ' locked-item' : ''}`}
-                        onClick={() => {
-                          if (!owned) {
-                            showToast(`🔒 상점에서 ⭐${item.price}p로 구매하면 사용할 수 있어요!`);
-                            return;
-                          }
-                          equipItem(partTab, item.id);
-                        }}
-                      >
-                        <div className="wardrobe-item-icon">{item.emoji}</div>
-                        <div className="wardrobe-item-name">{item.name}</div>
-                        {!owned && <div className="wardrobe-item-price">🔒 ⭐{item.price}p</div>}
-                        {owned && equipped && <div className="wardrobe-item-owned">✨ 착용중</div>}
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+          {/* Right options */}
+          <div style={{
+            background:'#FFF4E6', borderRadius:20,
+            padding:14, minWidth:220, maxWidth:300, flex:1,
+            border:'1px solid #F0D8C0',
+          }}>
+            <FacePanel />
           </div>
         </div>
       </div>
@@ -385,32 +559,4 @@ export default function CharDress() {
   );
 }
 
-// 가족 미니 캔버스 컴포넌트
-function FamilyMiniCanvas({ member, charData, selected, onClick }) {
-  const canvasRef = useRef(null);
-
-  useEffect(() => {
-    if (!canvasRef.current) return;
-    if (member.id === 'pet2') {
-      const ctx = canvasRef.current.getContext('2d');
-      ctx.clearRect(0, 0, 70, 100);
-      ctx.font = '50px serif';
-      ctx.textAlign = 'center';
-      ctx.fillText('🐾', 35, 65);
-    } else {
-      drawCharacter(canvasRef.current, charData, 0.35);
-    }
-  }, [charData, member.id]);
-
-  return (
-    <div className="family-mini" onClick={onClick}>
-      <canvas
-        ref={canvasRef}
-        width={70}
-        height={100}
-        className={`family-mini-canvas${selected ? ' selected' : ''}`}
-      />
-      <div className="family-mini-label">{member.label}</div>
-    </div>
-  );
-}
+export { MiniCharCanvas };
